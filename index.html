@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gestão Educacional — Firebase</title>
+<style>
+:root{--p:#2563eb;--p2:#1e40af;--bg:#f4f7fb;--card:#fff;--txt:#172033;--muted:#64748b;--line:#e2e8f0;--ok:#16a34a;--bad:#dc2626}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px system-ui,Arial}
+button,input,select,textarea{font:inherit}button{border:0;border-radius:10px;padding:11px 15px;font-weight:750;cursor:pointer}.primary{background:var(--p);color:#fff}.secondary{background:#e2e8f0}.danger{background:#fee2e2;color:#b91c1c}
+.wrap{max-width:1200px;margin:auto;padding:0 18px}.top{background:linear-gradient(135deg,var(--p2),var(--p));color:#fff;padding:20px 0}.brand{font-size:24px;font-weight:900}.muted{color:var(--muted)}.top .muted{color:#dbeafe}
+.layout{display:grid;grid-template-columns:240px 1fr;min-height:calc(100vh - 84px)}aside{background:#fff;border-right:1px solid var(--line);padding:15px}aside button{display:block;width:100%;text-align:left;background:transparent;margin:3px 0}aside button.active,aside button:hover{background:#eff6ff;color:var(--p)}
+main{padding:24px}.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px;box-shadow:0 4px 18px #0f172a0a}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}.stat{font-size:30px;font-weight:900}
+input,select,textarea{width:100%;padding:11px;border:1px solid #cbd5e1;border-radius:10px;margin:5px 0 12px;background:#fff}.row{display:flex;gap:10px;justify-content:space-between;align-items:center;flex-wrap:wrap}.badge{display:inline-block;padding:4px 9px;border-radius:99px;background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:800}
+table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left}.ok{color:var(--ok);font-weight:800}
+.hidden{display:none!important}.login{max-width:460px;margin:7vh auto}.q{border-top:1px solid var(--line);padding:18px 0}.opt{display:block;padding:7px}.opt input{width:auto;margin-right:8px}
+.toast{position:fixed;right:18px;bottom:18px;background:#111827;color:#fff;padding:13px 16px;border-radius:10px;display:none;z-index:99}.live{display:inline-flex;gap:7px;align-items:center}.dot{width:9px;height:9px;border-radius:50%;background:#22c55e}
+.small{font-size:13px}.toolbar{background:#f8fafc;padding:12px;border-radius:12px;margin:10px 0}.question-box{border:1px solid var(--line);border-radius:12px;padding:15px;margin:10px 0;background:#fff}
+@media(max-width:800px){.layout{grid-template-columns:1fr}aside{display:flex;overflow:auto;border-right:0;border-bottom:1px solid var(--line);gap:4px}aside button{width:auto;white-space:nowrap}}
+</style>
+</head>
+<body>
+<div id="login" class="wrap login"><div class="card">
+<div class="brand">🎓 Gestão Educacional</div>
+<p class="muted">Sistema conectado ao Firebase</p>
+<label>Usuário ou e-mail</label><input id="lu" autocomplete="username">
+<label>Senha</label><input id="lp" type="password" autocomplete="current-password">
+<button class="primary" style="width:100%" onclick="entrar()">Entrar</button>
+<p id="lm" class="muted"></p>
+<div class="toolbar small">
+<b>Contas de exemplo</b><br>
+Aluno: <b>davi702</b> — senha <b>04/04/2013</b><br>
+Professora: <b>gracinha</b> — senha <b>1234</b><br><br>
+<small>As contas precisam ser criadas no Firebase Authentication na primeira configuração.</small>
+</div></div></div>
+
+<div id="app" class="hidden">
+<header class="top"><div class="wrap"><div class="row">
+<div><div class="brand">🎓 Gestão Educacional</div><div id="who" class="muted"></div></div>
+<div class="live"><span class="dot"></span> Firebase conectado</div><button class="secondary" onclick="sair()">Sair</button>
+</div></div></header>
+<div class="layout"><aside id="nav"></aside><main id="main"></main></div></div>
+<div id="toast" class="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
+import { getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, query, where, onSnapshot, serverTimestamp, orderBy } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+
+const firebaseConfig={
+ apiKey:"AIzaSyC5v8JpTwQW_OMKI-00zOPeiJxFti13ceA",
+ authDomain:"gestao-76bc3.firebaseapp.com",
+ projectId:"gestao-76bc3",
+ storageBucket:"gestao-76bc3.firebasestorage.app",
+ messagingSenderId:"681878504128",
+ appId:"1:681878504128:web:74957afdc5afdb0e95a325",
+ measurementId:"G-8275Y5P1VP"
+};
+const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
+let me=null,stopSubmissions=null,draft=[];
+
+const authEmail=(login)=>login.includes("@")?login:`${login.toLowerCase()}@gestao-76bc3.firebaseapp.com`;
+
+window.entrar=async()=>{
+ try{lm.textContent="Entrando...";await signInWithEmailAndPassword(auth,authEmail(lu.value.trim()),lp.value)}
+ catch(e){lm.textContent="Não foi possível entrar. Verifique usuário/senha e se a conta já foi criada no Firebase Authentication.";console.error(e)}
+};
+window.sair=()=>signOut(auth);
+
+onAuthStateChanged(auth,async user=>{
+ if(!user){login.classList.remove("hidden");app.classList.add("hidden");return}
+ const snap=await getDoc(doc(db,"users",user.uid));
+ if(!snap.exists()){await signOut(auth);lm.textContent="Conta autenticada, mas ainda não possui cadastro em Firestore.";return}
+ me={uid:user.uid,...snap.data()};login.classList.add("hidden");app.classList.remove("hidden");start();
+});
+
+function toast(x){const e=document.getElementById("toast");e.textContent=x;e.style.display="block";setTimeout(()=>e.style.display="none",2800)}
+const esc=x=>String(x??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+function nav(items){navEl.innerHTML=items.map((x,i)=>`<button class="${i===0?"active":""}" onclick="${x[0]}(this)">${x[1]}</button>`).join("")}
+const navEl=document.getElementById("nav");
+
+function start(){
+ who.textContent=`${me.name} · ${me.role==="teacher"?"Professor(a)":"Aluno"}${me.className?" · "+me.className:""}`;
+ if(me.role==="teacher")nav([["dashboard","🏠 Dashboard"],["atividades","📝 Atividades"],["nova","➕ Criar atividade"],["alunos","👥 Alunos"],["entregas","📥 Entregas"]]);
+ else nav([["dashboard","🏠 Início"],["atividades","📝 Atividades"],["notas","📊 Minhas notas"],["perfil","⚙️ Perfil"]]);
+ dashboard();
+}
+function active(b){document.querySelectorAll("#nav button").forEach(x=>x.classList.remove("active"));b?.classList.add("active")}
+window.dashboard=async(b)=>{active(b);let a=(await getDocs(collection(db,"activities"))).docs.map(d=>({id:d.id,...d.data()}));let s=(await getDocs(collection(db,"submissions"))).docs.map(d=>({id:d.id,...d.data()}));
+ if(me.role==="teacher")main.innerHTML=`<h1>Dashboard</h1><div class="grid"><div class=card><div class=muted>Atividades</div><div class=stat>${a.filter(x=>x.createdBy===me.uid).length}</div></div><div class=card><div class=muted>Entregas</div><div class=stat>${s.length}</div></div></div><div class=card><h2>⚡ Entregas em tempo real</h2><p>O painel escuta o Firestore com <code>onSnapshot()</code>. Quando um aluno envia uma atividade, o professor recebe a atualização sem precisar recarregar a página.</p></div>`;
+ else main.innerHTML=`<h1>Olá, ${esc(me.name.split(" ").slice(0,2).join(" "))}! 👋</h1><div class=grid><div class=card><div class=muted>Turma</div><div class=stat>${esc(me.className)}</div></div><div class=card><div class=muted>Atividades</div><div class=stat>${a.filter(x=>x.published&&x.className===me.className).length}</div></div><div class=card><div class=muted>Entregas</div><div class=stat>${s.filter(x=>x.studentId===me.uid).length}</div></div></div>`;
+};
+
+window.atividades=async(b)=>{active(b);let snap=await getDocs(collection(db,"activities"));let a=snap.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.published&&(me.role==="teacher"?x.createdBy===me.uid:x.className===me.className));main.innerHTML=`<div class=row><h1>Atividades</h1>${me.role==="teacher"?'<button class=primary onclick="nova()">+ Criar</button>':""}</div>`+(a.length?a.map(x=>`<div class=card><span class=badge>${esc(x.className)}</span><h2>${esc(x.title)}</h2><p>${esc(x.description)}</p><p class=muted>${x.questions.length} questões</p><button class=primary onclick="${me.role==="student"?`responder('${x.id}')`:`verAtividade('${x.id}')`}">${me.role==="student"?"Responder":"Ver entregas"}</button></div>`).join(""):"<div class=card>Nenhuma atividade.</div>")};
+
+window.nova=async(b)=>{active(b);main.innerHTML=`<h1>Criar atividade</h1><div class=card><h2>1. Conteúdo</h2><label>Conteúdo informado pelo professor</label><textarea id=topic rows=4 placeholder="Ex.: Frações e números racionais"></textarea><div class=grid><div><label>Quantidade</label><input id=qty type=number value=8 min=1 max=30></div><div><label>Turma</label><input id=aclass value="${esc(me.className||"702")}"></div></div><button class=primary onclick="gerar()">Gerar rascunho</button></div><div class=card><h2>2. Revisar e publicar</h2><label>Título</label><input id=title><label>Descrição</label><textarea id=desc></textarea><label>Prazo</label><input id=due type=datetime-local><div id=qs></div><button class=primary onclick="publicar()">Publicar</button></div>`};
+
+window.gerar=()=>{if(!topic.value.trim())return toast("Informe o conteúdo.");draft=[];for(let i=0;i<+qty.value;i++)draft.push(makeQ(i));title.value="Atividade — "+topic.value.trim().slice(0,60);desc.value="Rascunho gerado a partir do conteúdo informado. Revise antes de publicar.";renderEditor();toast("Rascunho criado.")};
+function makeQ(i){let type=["mcq","open","truefalse","match"][i%4];if(type==="mcq")return{id:"q"+Date.now()+i,type,prompt:`Questão ${i+1} sobre o conteúdo informado.`,options:["Alternativa A","Alternativa B","Alternativa C","Alternativa D"],correct:0};if(type==="open")return{id:"q"+Date.now()+i,type,prompt:`Questão ${i+1}: explique um conceito estudado.`,correct:null};if(type==="truefalse")return{id:"q"+Date.now()+i,type,prompt:`Questão ${i+1}: a afirmação apresentada é verdadeira?`,correct:true};return{id:"q"+Date.now()+i,type,prompt:`Questão ${i+1}: associe os itens corretamente.`,left:["Item A","Item B","Item C"],right:["Descrição 1","Descrição 2","Descrição 3"],correct:[0,1,2]}};
+function renderEditor(){qs.innerHTML=draft.map((q,i)=>`<div class=question-box><div class=row><b>Questão ${i+1}</b><select onchange="tipo(${i},this.value)"><option value=mcq ${q.type==="mcq"?"selected":""}>Múltipla escolha</option><option value=open ${q.type==="open"?"selected":""}>Aberta</option><option value=truefalse ${q.type==="truefalse"?"selected":""}>Verdadeiro/Falso</option><option value=match ${q.type==="match"?"selected":""}>Associar</option><option value=short ${q.type==="short"?"selected":""}>Resposta curta</option></select></div><textarea id=qp${i} rows=2>${esc(q.prompt)}</textarea>${opts(q,i)}</div>`).join("")}
+function opts(q,i){if(q.type==="mcq")return [0,1,2,3].map(j=>`<input id=a${i}_${j} value="${esc(q.options[j])}" placeholder="Alternativa ${String.fromCharCode(65+j)}">`).join("")+`<select id=c${i}><option value=0>Gabarito A</option><option value=1>Gabarito B</option><option value=2>Gabarito C</option><option value=3>Gabarito D</option></select>`;if(q.type==="truefalse")return`<select id=c${i}><option value=true>Verdadeiro</option><option value=false>Falso</option></select>`;if(q.type==="match")return`<textarea id=l${i} placeholder="Coluna A">${q.left.join("\n")}</textarea><textarea id=r${i} placeholder="Coluna B">${q.right.join("\n")}</textarea>`;return`<input id=c${i} value="${esc(q.correct||"")}" placeholder="Resposta esperada (opcional)">`}
+window.tipo=(i,t)=>{draft[i].type=t;renderEditor()};
+window.publicar=async()=>{if(!title.value.trim())return toast("Informe o título.");let qs2=draft.map((q,i)=>{q.prompt=document.getElementById("qp"+i).value;if(q.type==="mcq"){q.options=[0,1,2,3].map(j=>document.getElementById(`a${i}_${j}`).value);q.correct=+document.getElementById(`c${i}`).value}else if(q.type==="truefalse")q.correct=document.getElementById(`c${i}`).value==="true";else if(q.type==="match"){q.left=document.getElementById(`l${i}`).value.split("\n").filter(Boolean);q.right=document.getElementById(`r${i}`).value.split("\n").filter(Boolean);q.correct=q.left.map((_,j)=>j)}else q.correct=document.getElementById(`c${i}`).value||null;return q});
+ await addDoc(collection(db,"activities"),{title:title.value,description:desc.value,className:aclass.value,createdBy:me.uid,published:true,dueAt:due.value,questions:qs2,createdAt:serverTimestamp()});toast("Atividade publicada no Firebase.");atividades()};
+function qhtml(q,i){if(q.type==="mcq")return`<div class=q><b>${i+1}. ${esc(q.prompt)}</b>${q.options.map((o,j)=>`<label class=opt><input type=radio name=q${i} value=${j}>${esc(o)}</label>`).join("")}</div>`;if(q.type==="truefalse")return`<div class=q><b>${i+1}. ${esc(q.prompt)}</b><label class=opt><input type=radio name=q${i} value=true>Verdadeiro</label><label class=opt><input type=radio name=q${i} value=false>Falso</label></div>`;if(q.type==="match")return`<div class=q><b>${i+1}. ${esc(q.prompt)}</b>${q.left.map((x,j)=>`<label>${esc(x)}<select id=m${i}_${j}>${q.right.map((r,k)=>`<option value=${k}>${esc(r)}</option>`).join("")}</select></label>`).join("")}</div>`;return`<div class=q><b>${i+1}. ${esc(q.prompt)}</b><textarea id=ans${i} rows=${q.type==="open"?4:2}></textarea></div>`}
+window.responder=async id=>{let a=(await getDoc(doc(db,"activities",id))).data();main.innerHTML=`<div class=row><h1>${esc(a.title)}</h1><button class=secondary onclick="atividades()">Voltar</button></div><div class=card>${a.questions.map(qhtml).join("")}<button class=primary onclick="enviar('${id}')">Enviar atividade</button></div>`};
+window.enviar=async id=>{let a=(await getDoc(doc(db,"activities",id))).data(),answers=[],score=0;for(let i=0;i<a.questions.length;i++){let q=a.questions[i],v;if(q.type==="mcq"){let z=document.querySelector(`input[name=q${i}]:checked`);if(!z)return toast("Responda todas as questões.");v=+z.value;if(v===q.correct)score++}else if(q.type==="truefalse"){let z=document.querySelector(`input[name=q${i}]:checked`);if(!z)return toast("Responda todas as questões.");v=z.value==="true";if(v===q.correct)score++}else if(q.type==="match"){v=q.left.map((_,j)=>+document.getElementById(`m${i}_${j}`).value);if(v.every((x,j)=>x===q.correct[j]))score++}else{v=document.getElementById(`ans${i}`).value.trim();if(!v)return toast("Preencha todas as respostas.");if(q.correct&&v.toLowerCase()===String(q.correct).toLowerCase())score++}answers.push(v)}
+ await addDoc(collection(db,"submissions"),{activityId:id,studentId:me.uid,studentName:me.name,className:me.className,answers,score,total:a.questions.length,status:"submitted",submittedAt:serverTimestamp()});toast("Enviado para a professora!");dashboard()};
+
+window.entregas=async(b)=>{active(b);main.innerHTML=`<h1>Entregas <span class=live><span class=dot></span> em tempo real</span></h1><div class=card id=livebox>Carregando...</div>`;if(stopSubmissions)stopSubmissions();stopSubmissions=onSnapshot(query(collection(db,"submissions"),orderBy("submittedAt","desc")),(snap)=>{livebox.innerHTML=`<table><tr><th>Aluno</th><th>Turma</th><th>Atividade</th><th>Resultado</th><th>Status</th></tr>${snap.docs.map(d=>{let x=d.data();return`<tr><td>${esc(x.studentName)}</td><td>${esc(x.className)}</td><td>${esc(x.activityId)}</td><td class=ok>${x.score}/${x.total}</td><td>${esc(x.status)}</td></tr>`}).join("")||"<tr><td colspan=5>Nenhuma entrega.</td></tr>"}</table>`},e=>{livebox.textContent="Erro ao ouvir entregas: "+e.message})};
+window.alunos=async(b)=>{active(b);let s=await getDocs(query(collection(db,"users"),where("role","==","student")));main.innerHTML=`<h1>Alunos</h1><div class=card><table><tr><th>Nome</th><th>Usuário</th><th>E-mail</th><th>Telefone</th><th>Turma</th></tr>${s.docs.map(d=>{let x=d.data();return`<tr><td>${esc(x.name)}</td><td>${esc(x.username)}</td><td>${esc(x.email)}</td><td>${esc(x.phone||"—")}</td><td>${esc(x.className)}</td></tr>`}).join("")}</table></div>`};
+window.notas=async(b)=>{active(b);let s=await getDocs(query(collection(db,"submissions"),where("studentId","==",me.uid)));main.innerHTML=`<h1>Minhas notas</h1><div class=card><table><tr><th>Atividade</th><th>Resultado</th><th>Status</th></tr>${s.docs.map(d=>{let x=d.data();return`<tr><td>${esc(x.activityId)}</td><td>${x.score}/${x.total}</td><td>${esc(x.status)}</td></tr>`}).join("")||"<tr><td colspan=3>Nenhuma entrega.</td></tr>"}</table></div>`};
+window.perfil=async(b)=>{active(b);main.innerHTML=`<h1>Meu perfil</h1><div class=card><p><b>Nome:</b> ${esc(me.name)}</p><p><b>Usuário:</b> ${esc(me.username)}</p><p><b>E-mail:</b> ${esc(me.email||"—")}</p><p><b>Telefone:</b> ${esc(me.phone||"—")}</p><p><b>Turma:</b> ${esc(me.className||"—")}</p></div>`};
+window.verAtividade=async(id)=>{let a=await getDoc(doc(db,"activities",id));let s=await getDocs(query(collection(db,"submissions"),where("activityId","==",id)));main.innerHTML=`<h1>${esc(a.data().title)}</h1><div class=card><h2>Entregas</h2>${s.docs.map(d=>{let x=d.data();return`<div class=toolbar><b>${esc(x.studentName)}</b> — ${x.score}/${x.total}</div>`}).join("")||"Nenhuma entrega ainda."}</div>`};
+</script>
+</body>
+</html>
