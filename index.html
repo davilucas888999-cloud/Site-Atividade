@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gestão Educacional — Escola</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--blue:#2563eb;--blue2:#1d4ed8;--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#64748b;--line:#e2e8f0;--green:#16a34a;--red:#dc2626;--orange:#d97706}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px system-ui,-apple-system,Segoe UI,Roboto,Arial}
+button,input,select,textarea{font:inherit}button{border:0;border-radius:10px;padding:11px 15px;font-weight:700;cursor:pointer}
+.primary{background:var(--blue);color:#fff}.secondary{background:#e2e8f0;color:#172033}.danger{background:#fee2e2;color:#b91c1c}
+header{background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;padding:20px 0}.wrap{max-width:1200px;margin:auto;padding:0 18px}.brand{font-size:24px;font-weight:900}.sub{color:#dbeafe}
+.app{display:grid;grid-template-columns:235px 1fr;min-height:calc(100vh - 82px)}aside{background:#fff;border-right:1px solid var(--line);padding:16px}aside button{display:block;width:100%;text-align:left;background:transparent;margin-bottom:4px}aside button:hover,aside .active{background:#eff6ff;color:var(--blue)}
+main{padding:24px}.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px;box-shadow:0 4px 18px #0f172a0b}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}.stat{font-size:30px;font-weight:900}
+input,select,textarea{width:100%;padding:11px;border:1px solid #cbd5e1;border-radius:10px;margin:5px 0 12px;background:#fff}.muted{color:var(--muted)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.badge{display:inline-block;padding:4px 9px;border-radius:99px;background:#dbeafe;color:#1d4ed8;font-weight:800;font-size:12px}
+table{width:100%;border-collapse:collapse}th,td{padding:11px;text-align:left;border-bottom:1px solid var(--line)}.ok{color:var(--green);font-weight:800}
+.hidden{display:none!important}.login{max-width:430px;margin:7vh auto}.login .brand{text-align:center}.notice{padding:12px;border-radius:10px;background:#eff6ff;margin:12px 0}.warn{background:#fff7ed;color:#9a3412}.q{border-top:1px solid var(--line);padding:18px 0}.opt{display:block;padding:8px}.opt input{width:auto;margin-right:8px}
+.modal{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:15px;z-index:50}.modal>div{background:#fff;border-radius:16px;padding:22px;width:min(700px,100%);max-height:90vh;overflow:auto}
+.toast{position:fixed;right:18px;bottom:18px;background:#111827;color:#fff;padding:13px 16px;border-radius:10px;display:none;z-index:80}
+.live{display:inline-flex;align-items:center;gap:7px}.dot{width:9px;height:9px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 5px #22c55e20}
+@media(max-width:800px){.app{grid-template-columns:1fr}aside{display:flex;overflow:auto;border-right:0;border-bottom:1px solid var(--line);gap:5px}aside button{width:auto;white-space:nowrap}}
+</style>
+</head>
+<body>
+
+<div id="login" class="wrap login">
+  <div class="card">
+    <div class="brand">🎓 Gestão Educacional</div>
+    <p class="muted" style="text-align:center">Acesso de alunos e professores</p>
+    <label>Usuário</label><input id="username" autocomplete="username">
+    <label>Senha</label><input id="password" type="password" autocomplete="current-password">
+    <button class="primary" style="width:100%" onclick="entrar()">Entrar</button>
+    <p id="loginMsg" class="muted"></p>
+    <div class="notice"><b>Contas de exemplo</b><br>Aluno: <b>davi702</b><br>Professora: <b>gracinha</b></div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+<header><div class="wrap"><div class="row">
+  <div><div class="brand">🎓 Gestão Educacional</div><div id="userInfo" class="sub"></div></div>
+  <div class="live"><span class="dot"></span> tempo real</div>
+  <button class="secondary" onclick="sair()">Sair</button>
+</div></div></header>
+<div class="app"><aside id="menu"></aside><main id="main"></main></div>
+</div>
+
+<div id="modal" class="modal hidden"><div id="modalBody"></div></div>
+<div id="toast" class="toast"></div>
+
+<script>
+/*
+  IMPORTANTE:
+  Esta página é um frontend completo e já traz contas DEMO para funcionar
+  imediatamente no navegador. Para uso real, configure Supabase abaixo.
+
+  Nunca coloque uma chave "service_role" no HTML.
+*/
+const CONFIG={
+  SUPABASE_URL:"COLE_AQUI_A_URL_DO_SEU_SUPABASE",
+  SUPABASE_ANON_KEY:"COLE_AQUI_A_CHAVE_ANON"
+};
+
+const DEMO={
+  davi702:{
+    username:"davi702",password:"04/04/2013",role:"student",
+    name:"DAVI LUCAS PAULINO DA COSTA",email:"davilucascosta031@gmail.com",
+    className:"702",classId:"demo-702"
+  },
+  gracinha:{
+    username:"gracinha",password:"1234",role:"teacher",
+    name:"MARIA DAS GRAÇAS DE AMORIM SOUSA SILVA",email:"",
+    className:"",classId:null
+  }
+};
+
+let db=null,me=null,realTimeChannel=null;
+const $=id=>document.getElementById(id);
+function esc(x){return String(x??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function toast(t){$("toast").textContent=t;$("toast").style.display="block";setTimeout(()=>$("toast").style.display="none",2500)}
+function configured(){return !CONFIG.SUPABASE_URL.startsWith("COLE_")&&!CONFIG.SUPABASE_ANON_KEY.startsWith("COLE_")}
+function modal(html){$("modalBody").innerHTML=html;$("modal").classList.remove("hidden")}
+function closeModal(){$("modal").classList.add("hidden")}
+function menu(items){$("menu").innerHTML=items.map((i,n)=>`<button class="${n===0?"active":""}" onclick="go('${i[0]}',this)">${i[1]}</button>`).join("")}
+function go(p,b){document.querySelectorAll("#menu button").forEach(x=>x.classList.remove("active"));b?.classList.add("active");window[p]?.()}
+function sair(){me=null;sessionStorage.removeItem("edu_demo_user");location.reload()}
+
+function entrar(){
+ const u=$("username").value.trim().toLowerCase(),p=$("password").value;
+ if(DEMO[u]&&DEMO[u].password===p){me={...DEMO[u],demo:true};sessionStorage.setItem("edu_demo_user",JSON.stringify(me));iniciar();return}
+ if(!db){$("loginMsg").textContent="Usuário ou senha inválidos.";return}
+ loginSupabase(u,p);
+}
+async function loginSupabase(u,p){
+ try{
+  // Espera-se uma RPC login_user criada no banco. Para produção, substitua
+  // por Supabase Auth e auth.uid()/RLS.
+  const {data,error}=await db.rpc("login_user",{p_username:u,p_password:p});
+  if(error||!data?.id)throw 0;
+  me={...data,demo:false};sessionStorage.setItem("edu_demo_user",JSON.stringify(me));iniciar();
+ }catch(e){$("loginMsg").textContent="Usuário ou senha inválidos."}
+}
+
+function iniciar(){
+ $("login").classList.add("hidden");$("app").classList.remove("hidden");
+ $("userInfo").textContent=`${me.name} · ${me.role==="teacher"?"Professor(a)":"Aluno"}${me.className?" · Turma "+me.className:""}`;
+ if(me.role==="teacher")menu([["dashboard","🏠 Dashboard"],["atividades","📝 Atividades"],["novaAtividade","➕ Nova atividade"],["alunos","👥 Alunos"],["turmas","🏫 Turmas"],["entregas","📊 Entregas"],["contas","🔐 Credenciais"],["perfil","⚙️ Perfil"]]);
+ else menu([["dashboard","🏠 Início"],["atividades","📝 Minhas atividades"],["notas","📊 Minhas notas"],["perfil","⚙️ Meu perfil"]]);
+ dashboard();subscribe();
+}
+function subscribe(){
+ if(!db||me.demo)return;
+ realTimeChannel=db.channel("gestao-live")
+ .on("postgres_changes",{event:"*",schema:"public",table:"activities"},()=>atividades())
+ .on("postgres_changes",{event:"*",schema:"public",table:"submissions"},()=>{entregas();notas()})
+ .subscribe();
+}
+
+/* DEMO DATA */
+let demoActivities=[
+ {id:"demo-a1",title:"Matemática — Frações",className:"702",description:"Atividade de revisão sobre frações.",due_at:"",questions:[
+  {question:"Qual é 1/2 + 1/2?",options:["1/4","1/2","1","2"],correct:2},
+  {question:"Qual é 3/4 de 20?",options:["10","12","15","18"],correct:2}
+ ],published:true,created_by:"gracinha"}
+];
+let demoSubmissions=[];
+
+async function dashboard(){
+ if(me.role==="teacher"){
+  $("main").innerHTML=`<h1>Dashboard</h1><div class="grid">
+   <div class="card"><div class="muted">Alunos</div><div class="stat">${me.demo?"1":await count("profiles","role","student")}</div></div>
+   <div class="card"><div class="muted">Atividades</div><div class="stat">${me.demo?demoActivities.length:await count("activities","created_by",me.id)}</div></div>
+   <div class="card"><div class="muted">Entregas</div><div class="stat">${me.demo?demoSubmissions.length:await count("submissions",null,null)}</div></div>
+  </div><div class="card"><h2>Recebimento em tempo real</h2><div class="notice">🟢 Quando conectado ao Supabase, novas entregas e atividades aparecem automaticamente.</div></div>`;
+ }else{
+  $("main").innerHTML=`<h1>Olá, ${esc(me.name.split(" ").slice(0,2).join(" "))}! 👋</h1><div class="grid">
+   <div class="card"><div class="muted">Turma</div><div class="stat">${esc(me.className||"—")}</div></div>
+   <div class="card"><div class="muted">Atividades disponíveis</div><div class="stat">${me.demo?demoActivities.length:0}</div></div>
+   <div class="card"><div class="muted">Entregas</div><div class="stat">${me.demo?demoSubmissions.filter(x=>x.student_id===me.username).length:0}</div></div>
+  </div><div class="card"><h2>Seu acesso</h2><p>Seu usuário e senha são individuais. Nunca compartilhe sua senha.</p><button class="primary" onclick="atividades()">Ver atividades</button></div>`;
+ }
+}
+async function count(table,field,value){
+ if(!db)return 0;let q=db.from(table).select("*",{count:"exact",head:true});if(field)q=q.eq(field,value);let {count}=await q;return count||0;
+}
+async function atividades(){
+ let data=me.demo?demoActivities:((await db.from("activities").select("*,classes(name)").eq("published",true).order("created_at",{ascending:false})).data||[]);
+ if(me.role==="student")data=data.filter(a=>!a.class_id||a.class_id===me.classId||a.className===me.className);
+ else data=data.filter(a=>a.created_by===me.id||!a.created_by);
+ $("main").innerHTML=`<div class="row"><h1>Atividades</h1>${me.role==="teacher"?'<button class="primary" onclick="novaAtividade()">+ Nova atividade</button>':""}</div>`+
+ (data.length?data.map(a=>`<div class="card"><div class="row"><div><span class="badge">${esc(a.className||a.classes?.name||"Turma")}</span><h2>${esc(a.title)}</h2><p class="muted">${esc(a.description||"")}</p><small>${a.questions.length} questão(ões) ${a.due_at?"· Prazo: "+new Date(a.due_at).toLocaleString("pt-BR"):""}</small></div><button class="primary" onclick="${me.role==="student"?`responder('${a.id}')`:`verAtividade('${a.id}')`}">${me.role==="student"?"Responder":"Detalhes"}</button></div></div>`).join(""):'<div class="card">Nenhuma atividade encontrada.</div>');
+}
+function novaAtividade(){
+ $("main").innerHTML=`<h1>Nova atividade</h1>
+ <div class="card"><h2>🧠 Criar a partir do conteúdo</h2>
+ <p class="muted">O professor informa o conteúdo. O sistema cria um <b>rascunho</b>; nada é publicado sem revisão.</p>
+ <label>Conteúdo</label><textarea id="contentAI" rows="5" placeholder="Ex.: Frações: equivalência, simplificação e operações — 7º ano"></textarea>
+ <div class="grid"><div><label>Questões</label><input id="qty" type="number" min="1" max="30" value="10"></div><div><label>Dificuldade</label><select id="difficulty"><option>Fácil</option><option selected>Média</option><option>Difícil</option></select></div></div>
+ <button class="primary" onclick="gerarRascunho()">Gerar rascunho</button></div>
+ <div class="card"><h2>📄 Criar/enviar atividade pronta</h2>
+ <label>Título</label><input id="title" placeholder="Título da atividade">
+ <label>Turma</label><input id="className" value="702">
+ <label>Descrição</label><textarea id="desc"></textarea>
+ <label>Prazo</label><input id="due" type="datetime-local">
+ <label>Questões em JSON</label><textarea id="questions" rows="12" placeholder='[{"question":"Quanto é 2+2?","options":["3","4","5","6"],"correct":1}]'></textarea>
+ <div class="row"><button class="secondary" onclick="revisar()">Revisar questões</button><button class="primary" onclick="publicar()">Publicar</button></div></div>`;
+}
+function gerarRascunho(){
+ const c=$("contentAI").value.trim(),n=Number($("qty").value)||10,d=$("difficulty").value;
+ if(!c)return toast("Informe o conteúdo.");
+ let q=Array.from({length:n},(_,i)=>({question:`Questão ${i+1} — revise e escreva uma questão sobre: ${c}`,options:["Alternativa A","Alternativa B","Alternativa C","Alternativa D"],correct:0}));
+ $("title").value=`Atividade — ${c.slice(0,60)}`;$("desc").value=`Rascunho gerado a partir do conteúdo. Dificuldade: ${d}. Revise antes de publicar.`;$("questions").value=JSON.stringify(q,null,2);
+ toast("Rascunho criado. Revise antes de publicar.");
+}
+function revisar(){try{let q=JSON.parse($("questions").value);modal(`<h2>Revisão</h2>${q.map((x,i)=>`<div class="q"><b>${i+1}. ${esc(x.question)}</b><br>A) ${esc(x.options[0])}<br>B) ${esc(x.options[1])}<br>C) ${esc(x.options[2])}<br>D) ${esc(x.options[3])}<br><span class="ok">Gabarito: ${"ABCD"[x.correct]}</span></div>`).join("")}<button class="primary" onclick="closeModal()">Fechar</button>`)}catch(e){toast("JSON inválido.")}}
+async function publicar(){
+ try{
+  let q=JSON.parse($("questions").value);if(!q.length)throw new Error("Adicione questões.");
+  let a={id:"demo-"+Date.now(),title:$("title").value.trim(),className:$("className").value.trim(),description:$("desc").value.trim(),due_at:$("due").value,questions:q,published:true,created_by:me.username};
+  if(!a.title)return toast("Informe o título.");
+  if(me.demo){demoActivities.unshift(a);toast("Atividade publicada para a turma "+a.className);atividades();return}
+  let {data:cls}=await db.from("classes").select("id").eq("name",a.className).single();
+  let {error}=await db.from("activities").insert({title:a.title,description:a.description,class_id:cls.id,created_by:me.id,questions:q,published:true,due_at:a.due_at||null});if(error)throw error;
+  toast("Atividade publicada.");atividades();
+ }catch(e){toast(e.message||"Verifique a atividade.")}
+}
+async function responder(id){
+ let a=me.demo?demoActivities.find(x=>x.id===id):(await db.from("activities").select("*").eq("id",id).single()).data;if(!a)return;
+ let old=me.demo?demoSubmissions.find(x=>x.activity_id===id&&x.student_id===me.username):(await db.from("submissions").select("*").eq("activity_id",id).eq("student_id",me.id).maybeSingle()).data;
+ if(old)return toast(`Você já entregou. Nota: ${old.score}/${old.total}`);
+ $("main").innerHTML=`<div class="row"><h1>${esc(a.title)}</h1><button class="secondary" onclick="atividades()">Voltar</button></div><div class="card"><p>${esc(a.description||"")}</p>${a.questions.map((q,i)=>`<div class="q"><b>${i+1}. ${esc(q.question)}</b>${q.options.map((o,j)=>`<label class="opt"><input type="radio" name="q${i}" value="${j}">${esc(o)}</label>`).join("")}</div>`).join("")}<button class="primary" onclick="enviar('${a.id}')">Enviar atividade</button></div>`;
+}
+async function enviar(id){
+ let a=me.demo?demoActivities.find(x=>x.id===id):(await db.from("activities").select("*").eq("id",id).single()).data;
+ let ans=a.questions.map((_,i)=>{let x=document.querySelector(`input[name=q${i}]:checked`);return x?Number(x.value):null});
+ if(ans.some(x=>x===null))return toast("Responda todas as questões.");
+ let score=a.questions.reduce((s,q,i)=>s+(ans[i]===q.correct?1:0),0);
+ let sub={id:"sub-"+Date.now(),activity_id:id,student_id:me.demo?me.username:me.id,score,total:a.questions.length,answers:ans,submitted_at:new Date().toISOString()};
+ if(me.demo){demoSubmissions.unshift(sub);toast(`Entrega recebida: ${score}/${a.questions.length}`);dashboard();return}
+ let {error}=await db.from("submissions").insert(sub);if(error)return toast(error.message);toast(`Entrega recebida: ${score}/${a.questions.length}`);notas();
+}
+async function entregas(){
+ let data=me.demo?demoSubmissions:(await db.from("submissions").select("*,profiles:student_id(full_name),activities:activity_id(title)").order("submitted_at",{ascending:false})).data||[];
+ $("main").innerHTML=`<h1>Entregas <span class="live" style="font-size:13px"><span class="dot"></span> ao vivo</span></h1><div class="card"><table><tr><th>Aluno</th><th>Atividade</th><th>Nota</th><th>Horário</th></tr>${data.map(s=>`<tr><td>${esc(s.student_id==="davi702"?"DAVI LUCAS PAULINO DA COSTA":s.profiles?.full_name||s.student_id)}</td><td>${esc(me.demo?(demoActivities.find(a=>a.id===s.activity_id)?.title||""):s.activities?.title)}</td><td class="ok">${s.score}/${s.total}</td><td>${new Date(s.submitted_at).toLocaleString("pt-BR")}</td></tr>`).join("")||"<tr><td colspan=4>Nenhuma entrega.</td></tr>"}</table></div>`;
+}
+async function notas(){await entregas()}
+async function alunos(){
+ let data=me.demo?[{full_name:"DAVI LUCAS PAULINO DA COSTA",username:"davi702",email:"davilucascosta031@gmail.com",className:"702"}]:(await db.from("profiles").select("*,classes(name)").eq("role","student").order("full_name")).data||[];
+ $("main").innerHTML=`<div class="row"><h1>Alunos</h1><button class="primary" onclick="novoAluno()">+ Cadastrar aluno</button></div><div class="card"><table><tr><th>Nome</th><th>Usuário</th><th>E-mail</th><th>Turma</th></tr>${data.map(s=>`<tr><td>${esc(s.full_name)}</td><td>${esc(s.username)}</td><td>${esc(s.email||"—")}</td><td>${esc(s.className||s.classes?.name||"—")}</td></tr>`).join("")}</table></div>`;
+}
+function novoAluno(){
+ modal(`<h2>Cadastrar aluno</h2><label>Nome completo</label><input id="newName"><label>E-mail</label><input id="newEmail" type="email"><label>Turma</label><input id="newClass" value="702"><label>Usuário</label><input id="newUser"><label>Senha inicial</label><input id="newPass" value="ANIVERSÁRIO (DD/MM/AAAA)"><div class="notice warn">A senha inicial deve ser trocada pelo aluno no primeiro acesso na versão de produção.</div><button class="primary" onclick="cadastrarAluno()">Cadastrar</button> <button class="secondary" onclick="closeModal()">Cancelar</button>`);
+}
+function cadastrarAluno(){
+ if(me.demo){toast("No modo demonstração, o cadastro fica apenas como exemplo.");closeModal();return}
+ toast("Para produção, este botão deve chamar uma Edge Function usando Supabase Auth e criar a conta com segurança.");closeModal();
+}
+async function turmas(){
+ let data=me.demo?[{name:"702",grade:"7º ano",shift:"Manhã"}]:(await db.from("classes").select("*").order("name")).data||[];
+ $("main").innerHTML=`<div class="row"><h1>Turmas</h1><button class="primary" onclick="novaTurma()">+ Nova turma</button></div><div class="card"><table><tr><th>Turma</th><th>Ano</th><th>Turno</th></tr>${data.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.grade)}</td><td>${esc(x.shift)}</td></tr>`).join("")}</table></div>`;
+}
+function novaTurma(){modal(`<h2>Nova turma</h2><label>Nome</label><input id="tName"><label>Ano</label><input id="tGrade"><label>Turno</label><select id="tShift"><option>Manhã</option><option>Tarde</option><option>Noite</option></select><button class="primary" onclick="toast('Cadastro de turma pronto para conexão ao banco.');closeModal()">Salvar</button>`)}
+function contas(){
+ $("main").innerHTML=`<div class="row"><h1>Credenciais</h1><button class="primary" onclick="novoAluno()">+ Nova conta de aluno</button></div>
+ <div class="card"><h2>👨‍🎓 Aluno de exemplo</h2><p><b>Nome:</b> DAVI LUCAS PAULINO DA COSTA</p><p><b>Usuário:</b> davi702</p><p><b>E-mail:</b> davilucascosta031@gmail.com</p><p><b>Turma:</b> 702</p><p><b>Senha padrão:</b> 04/04/2013</p></div>
+ <div class="card"><h2>👩‍🏫 Professora de exemplo</h2><p><b>Nome:</b> MARIA DAS GRAÇAS DE AMORIM SOUSA SILVA</p><p><b>Usuário:</b> gracinha</p><p><b>Senha:</b> 1234</p></div>
+ <div class="notice warn"><b>Segurança:</b> essas credenciais são apenas exemplos neste protótipo. Em produção, as senhas devem ser armazenadas pelo sistema de autenticação, nunca em texto no HTML.</div>`;
+}
+function perfil(){
+ $("main").innerHTML=`<h1>Meu perfil</h1><div class="card"><p><b>Nome:</b> ${esc(me.name)}</p><p><b>Usuário:</b> ${esc(me.username)}</p><p><b>E-mail:</b> ${esc(me.email||"Não informado")}</p><p><b>Perfil:</b> ${me.role==="teacher"?"Professor(a)":"Aluno"}</p>${me.className?`<p><b>Turma:</b> ${esc(me.className)}</p>`:""}</div><div class="card"><h2>Alterar senha</h2><input type="password" placeholder="Senha atual"><input type="password" placeholder="Nova senha"><button class="primary" onclick="toast('Na versão de produção, a alteração será feita pelo Supabase Auth.')">Alterar senha</button></div>`;
+}
+</script>
+</body>
+</html>
